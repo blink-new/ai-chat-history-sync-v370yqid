@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import UnifiedInbox from "../components/UnifiedInbox";
 import ServiceCard from "../components/ServiceCard";
+import { accountStorage } from "../services/accountStorage";
+import { blink } from '../blink/client';
 
 const services = [
   { name: "ChatGPT", provider: "OpenAI" },
@@ -10,21 +12,53 @@ const services = [
 ];
 
 const DashboardPage = () => {
-  const [connectedAccounts, setConnectedAccounts] = useState(() => {
-    const savedAccounts = localStorage.getItem('connectedAccounts');
-    return savedAccounts ? JSON.parse(savedAccounts) : [];
-  });
+  const [connectedAccounts, setConnectedAccounts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
 
   useEffect(() => {
-    localStorage.setItem('connectedAccounts', JSON.stringify(connectedAccounts));
-  }, [connectedAccounts]);
+    const unsubscribe = blink.auth.onAuthStateChanged((state) => {
+      setUser(state.user);
+    });
+    return unsubscribe;
+  }, []);
 
-  const handleConnect = (serviceName: string, provider: string) => {
-    setConnectedAccounts(prev => [...prev, { service_name: serviceName, provider }]);
+  useEffect(() => {
+    const loadAccounts = async () => {
+      if (!user?.id) {
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      try {
+        await accountStorage.initialize(user.id);
+        const accounts = await accountStorage.getAccounts();
+        setConnectedAccounts(accounts);
+      } catch (error) {
+        console.error('Failed to load accounts:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadAccounts();
+  }, [user]);
+
+  const handleConnect = async (serviceName: string, provider: string) => {
+    if (!user?.id) return;
+    
+    await accountStorage.addAccount(serviceName, provider);
+    const accounts = await accountStorage.getAccounts();
+    setConnectedAccounts(accounts);
   };
 
-  const handleDisconnect = (serviceName: string) => {
-    setConnectedAccounts(prev => prev.filter(acc => acc.service_name !== serviceName));
+  const handleDisconnect = async (serviceName: string) => {
+    if (!user?.id) return;
+    
+    await accountStorage.removeAccount(serviceName);
+    const accounts = await accountStorage.getAccounts();
+    setConnectedAccounts(accounts);
   };
 
   return (
@@ -42,6 +76,7 @@ const DashboardPage = () => {
               isConnected={connectedAccounts.some(acc => acc.service_name === service.name)}
               onConnect={handleConnect}
               onDisconnect={handleDisconnect}
+              loading={loading}
             />
           ))}
         </div>
