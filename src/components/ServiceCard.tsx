@@ -1,3 +1,5 @@
+import React from 'react';
+
 const ServiceCard = ({ name, provider, isConnected, onConnect, onDisconnect }) => {
   return (
     <div className="bg-secondary rounded-lg p-6 flex flex-col justify-between">
